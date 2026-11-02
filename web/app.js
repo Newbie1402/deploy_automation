@@ -7,6 +7,10 @@ let jobController;
 let appLogController;
 let activeStream = "";
 let activeJobId = "";
+let githubPollTimer;
+let githubPollInterval = 5;
+let githubRepositories = new Map();
+let githubConnected = false;
 
 function apiHeaders(extra = {}) {
   return Object.assign({}, extra);
@@ -20,11 +24,12 @@ function showLogin(message = "") {
   $("login-error").hidden = !message;
 }
 
-function showConsole(username) {
+function showConsole(username, githubConnected = false, githubUsername = "") {
   $("login-view").hidden = true;
   $("console-view").hidden = false;
   $("session-bar").hidden = !username;
   $("account-name").textContent = username || "";
+  loadGitHubConfig(githubConnected, githubUsername);
   restorePreviousJob();
 }
 
@@ -41,7 +46,7 @@ async function restoreSession() {
   try {
     const response = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
     const result = await response.json();
-    if (result.success && result.data.authenticated) showConsole(result.data.username || "");
+    if (result.success && result.data.authenticated) showConsole(result.data.username || "", result.data.github_connected, result.data.github_username || "");
     else showLogin();
   } catch {
     showLogin("Không kết nối được agent. Hãy thử tải lại trang.");
@@ -83,6 +88,101 @@ function parseEnvironment(value) {
     output[key] = line.slice(splitAt + 1);
   }
   return output;
+}
+
+async function loadGitHubConfig(connected, githubUsername = "") {
+  githubConnected = connected;
+  try {
+    const response = await apiFetch("/api/v1/github/config");
+    const result = await response.json();
+    $("github-connect-panel").hidden = false;
+    if (!result.success || !result.data.enabled) {
+      $("github-connect-title").textContent = "Kết nối GitHub để chọn repository";
+      $("github-connect-message").textContent = "Agent chưa được cấu hình GitHub App. Bạn vẫn có thể nhập URL và PAT thủ công.";
+      $("github-connect-button").disabled = true;
+      $("github-connect-button").textContent = "Chưa cấu hình";
+      return;
+    }
+    $("github-connect-button").disabled = false;
+    if (connected) {
+      showGitHubConnected(githubUsername);
+      await loadGitHubRepositories();
+    } else {
+      $("github-connect-title").textContent = "Chọn repository trực tiếp từ GitHub";
+      $("github-connect-message").textContent = "Kết nối tài khoản; token được giữ phía agent.";
+      $("github-connect-button").textContent = "Kết nối GitHub";
+    }
+  } catch {
+    $("github-connect-panel").hidden = false;
+    $("github-connect-message").textContent = "Không tải được cấu hình GitHub. Bạn vẫn có thể nhập URL và PAT thủ công.";
+  }
+}
+
+function showGitHubConnected(username) {
+  githubConnected = true;
+  $("github-connect-title").textContent = "Đã kết nối GitHub" + (username ? " · @" + username : "");
+  $("github-connect-message").textContent = "Agent sẽ dùng quyền GitHub này khi bạn triển khai. PAT thủ công vẫn có thể ghi đè.";
+  $("github-connect-button").textContent = "Ngắt khỏi agent";
+  $("github-device").hidden = true;
+  $("github-repository-field").hidden = false;
+}
+
+async function loadGitHubRepositories() {
+  const response = await apiFetch("/api/v1/github/repos");
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || "Không tải được repository GitHub.");
+  const select = $("github-repository");
+  select.replaceChildren(new Option("Chọn repository", ""));
+  githubRepositories = new Map();
+  for (const repo of result.data) {
+    githubRepositories.set(repo.full_name, repo);
+    select.add(new Option(repo.full_name + (repo.private ? " · riêng tư" : ""), repo.full_name));
+  }
+}
+
+async function loadGitHubBranches(repository) {
+  const branchField = $("github-branch-field");
+  branchField.hidden = true;
+  const response = await apiFetch("/api/v1/github/branches?repository=" + encodeURIComponent(repository));
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || "Không tải được nhánh.");
+  const select = $("github-branches");
+  select.replaceChildren(new Option("Chọn nhánh để điền", ""));
+  for (const branch of result.data) select.add(new Option(branch, branch));
+  branchField.hidden = result.data.length === 0;
+}
+
+async function startGitHubConnection() {
+  const response = await apiFetch("/api/v1/github/device/start", { method: "POST" });
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || "Không thể bắt đầu kết nối GitHub.");
+  const device = result.data;
+  githubPollInterval = device.interval;
+  $("github-user-code").textContent = device.user_code;
+  $("github-verify-link").href = device.verification_uri;
+  $("github-device").hidden = false;
+  $("github-connect-message").textContent = "Mã có hiệu lực trong " + Math.ceil(device.expires_in / 60) + " phút. Chờ bạn xác nhận trên GitHub.";
+  window.clearTimeout(githubPollTimer);
+  githubPollTimer = window.setTimeout(pollGitHubConnection, githubPollInterval * 1000);
+}
+
+async function pollGitHubConnection() {
+  try {
+    const response = await apiFetch("/api/v1/github/device/poll", { method: "POST" });
+    const result = await response.json();
+    if (response.status === 202 && result.data.status === "pending") {
+      githubPollInterval = result.data.interval;
+      githubPollTimer = window.setTimeout(pollGitHubConnection, githubPollInterval * 1000);
+      return;
+    }
+    if (!response.ok || !result.success) throw new Error(result.error || "Kết nối GitHub thất bại.");
+    window.clearTimeout(githubPollTimer);
+    showGitHubConnected(result.data.username);
+    await loadGitHubRepositories();
+  } catch (error) {
+    window.clearTimeout(githubPollTimer);
+    $("github-connect-message").textContent = error.message;
+  }
 }
 
 const dockerfilePresets = {
@@ -231,6 +331,46 @@ $("network-type").addEventListener("change", (event) => {
 $("project-preset").addEventListener("change", (event) => {
   $("dockerfile").value = dockerfilePresets[event.target.value] || "";
 });
+$("github-connect-button").addEventListener("click", async () => {
+  $("github-connect-button").disabled = true;
+  try {
+    if (githubConnected) {
+      const response = await apiFetch("/api/v1/github/disconnect", { method: "POST" });
+      if (!response.ok) throw new Error("Không thể ngắt kết nối GitHub.");
+      githubConnected = false;
+      githubRepositories.clear();
+      $("github-repository-field").hidden = true;
+      $("github-branch-field").hidden = true;
+      $("github-connect-title").textContent = "Chọn repository trực tiếp từ GitHub";
+      $("github-connect-message").textContent = "Đã xóa token khỏi phiên agent. URL và PAT nhập tay vẫn dùng được.";
+      $("github-connect-button").textContent = "Kết nối GitHub";
+    } else {
+      await startGitHubConnection();
+    }
+  } catch (error) {
+    $("github-connect-message").textContent = error.message;
+  } finally {
+    $("github-connect-button").disabled = false;
+  }
+});
+$("github-repository").addEventListener("change", async (event) => {
+  const repository = githubRepositories.get(event.target.value);
+  $("github-branch-field").hidden = true;
+  if (!repository) return;
+  $("repository").value = repository.clone_url;
+  $("branch").value = repository.default_branch;
+  try {
+    await loadGitHubBranches(repository.full_name);
+  } catch (error) {
+    $("github-connect-message").textContent = error.message;
+  }
+});
+$("github-branches").addEventListener("change", (event) => {
+  if (event.target.value) $("branch").value = event.target.value;
+});
+$("copy-github-code").addEventListener("click", async () => {
+  await navigator.clipboard.writeText($("github-user-code").textContent);
+});
 $("deploy-form").addEventListener("submit", submitDeploy);
 $("open-logs").addEventListener("click", openContainerLogs);
 $("login-form").addEventListener("submit", async (event) => {
@@ -248,7 +388,7 @@ $("login-form").addEventListener("submit", async (event) => {
     const result = await response.json();
     if (!response.ok || !result.success) throw new Error(result.error || "Đăng nhập không thành công.");
     $("login-password").value = "";
-    showConsole(result.data.username);
+    showConsole(result.data.username, false);
   } catch (error) {
     $("login-error").textContent = error.message === "Failed to fetch" ? "Không kết nối được agent." : error.message;
     $("login-error").hidden = false;
@@ -259,6 +399,7 @@ $("login-form").addEventListener("submit", async (event) => {
 });
 $("logout-button").addEventListener("click", async () => {
   try {
+    window.clearTimeout(githubPollTimer);
     await fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" });
   } finally {
     $("login-password").value = "";

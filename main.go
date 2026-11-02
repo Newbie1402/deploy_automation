@@ -30,7 +30,7 @@ func main() {
 		log.Fatal(err)
 	}
 	cancelCheck()
-	api := &API{Jobs: jobs, Deployer: deployer, Queue: make(chan deployTask, 128)}
+	api := &API{Jobs: jobs, Deployer: deployer, Queue: make(chan deployTask, 128), GitHub: newGitHubClient(os.Getenv("GITHUB_APP_CLIENT_ID"))}
 	if username != "" {
 		api.Sessions = newSessionManager(username, password)
 	}
