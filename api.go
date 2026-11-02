@@ -47,12 +47,17 @@ func (a *API) routes() http.Handler {
 	mux.HandleFunc("/api/v1/apps/deploy", a.deploy)
 	mux.HandleFunc("/api/v1/jobs/", a.jobRoute)
 	mux.HandleFunc("/api/v1/apps/", a.logsRoute)
+	mux.Handle("/", webHandler())
 	return a.authenticate(mux)
 }
 
 func (a *API) authenticate(next http.Handler) http.Handler {
 	token := envOr("DEPLOY_API_TOKEN", "")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if token != "" {
 			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {

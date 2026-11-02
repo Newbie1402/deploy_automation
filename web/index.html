@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <title>Deploy Console</title>
+    <link rel="stylesheet" href="/app.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Deploy Console">
+        <span class="brand-mark">D</span>
+        <span>deploy<span class="brand-light">/console</span></span>
+      </a>
+      <div class="topbar-right">
+        <span class="secure-pill"><span class="pulse"></span> VPN only</span>
+        <span class="build-label">AGENT <b>READY</b></span>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="intro">
+        <div>
+          <p class="eyebrow">DEPLOYMENT CONTROL PLANE</p>
+          <h1>Ship a repository.</h1>
+          <p class="intro-copy">Đồng bộ GitHub, build image và cập nhật container trên VPS.</p>
+        </div>
+        <div class="step-track" aria-label="Deployment stages">
+          <span><i>01</i> SOURCE</span><b></b><span><i>02</i> BUILD</span><b></b><span><i>03</i> RELEASE</span>
+        </div>
+      </section>
+
+      <div class="workspace">
+        <section class="panel deploy-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">NEW RELEASE</p>
+              <h2>Deployment config</h2>
+            </div>
+            <span class="panel-icon">↗</span>
+          </div>
+
+          <form id="deploy-form">
+            <fieldset>
+              <legend><span>01</span> Source repository</legend>
+              <label class="field">
+                <span>Repository URL</span>
+                <input id="repository" type="url" required placeholder="https://github.com/org/project.git" value="https://github.com/Newbie1402/Portfolio.git">
+              </label>
+              <div class="grid two">
+                <label class="field">
+                  <span>Branch</span>
+                  <input id="branch" required value="main">
+                </label>
+                <label class="field">
+                  <span>Workspace folder</span>
+                  <input id="app-name" required value="portfolio" pattern="[A-Za-z0-9]+([._-][A-Za-z0-9]+)*">
+                </label>
+              </div>
+              <label class="field">
+                <span>GitHub PAT <small>optional for public repositories</small></span>
+                <input id="git-token" type="password" autocomplete="new-password" placeholder="ghp_••••••••••••">
+              </label>
+            </fieldset>
+
+            <fieldset>
+              <legend><span>02</span> Container</legend>
+              <div class="grid three">
+                <label class="field">
+                  <span>Container port</span>
+                  <input id="container-port" type="number" min="1" max="65535" value="80" required>
+                </label>
+                <label class="field">
+                  <span>Host port</span>
+                  <input id="host-port" type="number" min="1" max="65535" value="18080" required>
+                </label>
+                <label class="field">
+                  <span>VPN network</span>
+                  <select id="network-type">
+                    <option value="tailscale">Tailscale</option>
+                    <option value="wireguard">WireGuard</option>
+                  </select>
+                </label>
+              </div>
+              <div class="grid two">
+                <label class="field">
+                  <span>Interface</span>
+                  <input id="network-interface" value="tailscale0">
+                </label>
+                <label class="field">
+                  <span>Health check path <small>optional</small></span>
+                  <input id="healthcheck-path" value="/" placeholder="/health">
+                </label>
+              </div>
+              <div class="grid two">
+                <label class="field">
+                  <span>Memory limit</span>
+                  <input id="memory-limit" value="512m" placeholder="512m">
+                </label>
+                <label class="field">
+                  <span>CPU limit</span>
+                  <input id="cpu-limit" type="number" min="0.1" step="0.1" value="1">
+                </label>
+              </div>
+            </fieldset>
+
+            <details class="advanced">
+              <summary>Advanced: environment & Dockerfile</summary>
+              <label class="field">
+                <span>Environment <small>one KEY=VALUE per line</small></span>
+                <textarea id="environment" rows="4" spellcheck="false" placeholder="APP_ENV=production&#10;PUBLIC_URL=https://example.com"></textarea>
+              </label>
+              <label class="field">
+                <span>Dockerfile override <small>used when the repo has no Dockerfile</small></span>
+                <textarea id="dockerfile" rows="8" spellcheck="false" placeholder="FROM node:22-alpine AS build&#10;WORKDIR /app&#10;COPY package*.json ./&#10;RUN npm ci&#10;COPY . .&#10;RUN npm run build&#10;&#10;FROM nginx:alpine&#10;COPY --from=build /app/dist /usr/share/nginx/html"></textarea>
+              </label>
+            </details>
+
+            <div class="form-error" id="form-error" role="alert" hidden></div>
+            <button class="primary-button" id="deploy-button" type="submit">
+              <span>Deploy application</span><span class="button-arrow">→</span>
+            </button>
+            <p class="form-footnote">Port được publish trên IP của interface VPN đã chọn.</p>
+          </form>
+        </section>
+
+        <aside class="right-column">
+          <section class="panel auth-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">CONTROL ACCESS</p>
+                <h2>Agent API token</h2>
+              </div>
+              <span class="lock-icon">⌑</span>
+            </div>
+            <label class="field">
+              <span>Bearer token</span>
+              <input id="api-token" type="password" autocomplete="current-password" placeholder="Paste the token from the agent env file">
+            </label>
+            <p class="hint">Token chỉ được giữ trong session của tab này và gửi qua HTTPS/VPN tới agent.</p>
+          </section>
+
+          <section class="panel activity-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">LIVE ACTIVITY</p>
+                <h2>Release stream</h2>
+              </div>
+              <span class="status-chip idle" id="job-status">IDLE</span>
+            </div>
+            <div class="job-meta" id="job-meta">
+              <span>No deployment selected</span>
+              <span id="job-id"></span>
+            </div>
+            <pre class="log-window" id="job-log" aria-live="polite"><span class="log-placeholder">Build and deployment output will appear here.</span></pre>
+            <div class="log-actions">
+              <button class="text-button" id="copy-job-id" type="button" disabled>Copy job ID</button>
+              <button class="text-button" id="stop-stream" type="button" hidden>Stop stream</button>
+            </div>
+          </section>
+
+          <section class="panel app-logs-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="eyebrow">RUNNING CONTAINER</p>
+                <h2>Container logs</h2>
+              </div>
+              <span class="live-label"><i></i> LIVE</span>
+            </div>
+            <div class="grid logs-control">
+              <label class="field">
+                <span>App name</span>
+                <input id="logs-app-name" value="portfolio">
+              </label>
+              <button class="secondary-button" id="open-logs" type="button">Stream</button>
+            </div>
+            <pre class="log-window short" id="container-log"><span class="log-placeholder">Connect to stream container stdout/stderr.</span></pre>
+          </section>
+        </aside>
+      </div>
+      <footer>Deploy Console <span>·</span> Requests are serialized per app <span>·</span> Images remain available for rollback</footer>
+    </main>
+  </body>
+</html>
