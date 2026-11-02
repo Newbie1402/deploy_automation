@@ -15,6 +15,12 @@ A small Go HTTP agent that syncs a GitHub repository, builds its Docker image, a
 go run .
 ```
 
+Open the agent address in a browser to use the embedded Deploy Console. Enter the
+agent API token in the page, then provide a GitHub repository, branch, ports, and
+VPN interface. The console submits deployments and streams job/container logs.
+The token is kept in the current browser tab's session storage; use HTTPS or a
+trusted VPN connection when accessing the console.
+
 The API listens on `127.0.0.1:8080` by default. Set `WORKSPACE_ROOT` for checked-out repositories, `DATA_DIR` for the audit log, and `API_ADDR` to listen on a VPN address. Any non-loopback `API_ADDR` requires `DEPLOY_API_TOKEN`; clients then send `Authorization: Bearer <token>`.
 
 ```sh
