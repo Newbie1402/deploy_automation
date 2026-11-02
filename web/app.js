@@ -1,24 +1,51 @@
 const $ = (id) => document.getElementById(id);
-const tokenField = $("api-token");
 const jobLog = $("job-log");
 const containerLog = $("container-log");
-const submitButton = $("deploy-button");
+const deployButton = $("deploy-button");
+const loginButton = $("login-button");
 let jobController;
 let appLogController;
 let activeStream = "";
 let activeJobId = "";
 
-tokenField.value = sessionStorage.getItem("deploy-api-token") || "";
-tokenField.addEventListener("input", () => sessionStorage.setItem("deploy-api-token", tokenField.value.trim()));
-
-$("network-type").addEventListener("change", (event) => {
-  $("network-interface").value = event.target.value === "tailscale" ? "tailscale0" : "wg0";
-});
-
 function apiHeaders(extra = {}) {
-  const token = tokenField.value.trim();
-  if (!token) throw new Error("Nhập Agent API token trước khi deploy.");
-  return Object.assign({ Authorization: "Bearer " + token }, extra);
+  return Object.assign({}, extra);
+}
+
+function showLogin(message = "") {
+  $("console-view").hidden = true;
+  $("session-bar").hidden = true;
+  $("login-view").hidden = false;
+  $("login-error").textContent = message;
+  $("login-error").hidden = !message;
+}
+
+function showConsole(username) {
+  $("login-view").hidden = true;
+  $("console-view").hidden = false;
+  $("session-bar").hidden = !username;
+  $("account-name").textContent = username || "";
+  restorePreviousJob();
+}
+
+async function apiFetch(url, options = {}) {
+  const response = await fetch(url, Object.assign({ credentials: "same-origin" }, options));
+  if (response.status === 401) {
+    showLogin("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+    throw new Error("Phiên đăng nhập đã hết hạn.");
+  }
+  return response;
+}
+
+async function restoreSession() {
+  try {
+    const response = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
+    const result = await response.json();
+    if (result.success && result.data.authenticated) showConsole(result.data.username || "");
+    else showLogin();
+  } catch {
+    showLogin("Không kết nối được agent. Hãy thử tải lại trang.");
+  }
 }
 
 function appendLog(target, value) {
@@ -32,7 +59,12 @@ function appendLog(target, value) {
 
 function setStatus(status, message = "") {
   const badge = $("job-status");
-  badge.textContent = status;
+  const labels = {
+    PENDING: "ĐANG CHỜ", CLONING: "ĐỒNG BỘ", BUILDING: "ĐANG BUILD",
+    RUNNING: "ĐANG CHẠY", SUCCESS: "THÀNH CÔNG", FAILED: "THẤT BẠI",
+    ROLLED_BACK: "ĐÃ ROLLBACK"
+  };
+  badge.textContent = labels[status] || status;
   badge.className = "status-chip";
   if (["PENDING", "CLONING", "BUILDING", "RUNNING"].includes(status)) badge.classList.add("running");
   if (status === "SUCCESS" || status === "ROLLED_BACK") badge.classList.add("success");
@@ -45,9 +77,9 @@ function parseEnvironment(value) {
   for (const [index, line] of value.split(/\r?\n/).entries()) {
     if (!line.trim() || line.trimStart().startsWith("#")) continue;
     const splitAt = line.indexOf("=");
-    if (splitAt < 1) throw new Error("Dòng environment " + (index + 1) + " cần theo dạng KEY=VALUE.");
+    if (splitAt < 1) throw new Error("Dòng biến môi trường " + (index + 1) + " cần theo dạng KEY=VALUE.");
     const key = line.slice(0, splitAt).trim();
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error("Environment key không hợp lệ ở dòng " + (index + 1) + ".");
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) throw new Error("Tên biến môi trường không hợp lệ ở dòng " + (index + 1) + ".");
     output[key] = line.slice(splitAt + 1);
   }
   return output;
@@ -60,10 +92,6 @@ const dockerfilePresets = {
   python: "FROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt ./\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nENV PORT=8000\nEXPOSE 8000\nCMD [\"sh\", \"-c\", \"gunicorn --bind 0.0.0.0:$PORT app:app\"]",
   go: "FROM golang:1.25-alpine AS build\nWORKDIR /src\nCOPY go.mod ./\nRUN go mod download\nCOPY . .\nRUN CGO_ENABLED=0 go build -o /server .\n\nFROM alpine:3.22\nCOPY --from=build /server /server\nENV PORT=8080\nEXPOSE 8080\nENTRYPOINT [\"/server\"]"
 };
-
-function applyProjectPreset() {
-  $("dockerfile").value = dockerfilePresets[$("project-preset").value] || "";
-}
 
 function collectPayload() {
   const appName = $("app-name").value.trim();
@@ -80,22 +108,19 @@ function collectPayload() {
       cpu_limit: $("cpu-limit").value.trim(),
       healthcheck_path: $("healthcheck-path").value.trim(),
       environment: parseEnvironment($("environment").value),
-      ...(dockerfile.trim() ? { dockerfile: dockerfile } : {})
+      ...(dockerfile.trim() ? { dockerfile } : {})
     },
     git: {
       repository: $("repository").value.trim(),
       branch: $("branch").value.trim(),
       token: $("git-token").value
     },
-    network: {
-      type: $("network-type").value,
-      interface: $("network-interface").value.trim()
-    }
+    network: { type: $("network-type").value, interface: $("network-interface").value.trim() }
   };
 }
 
 async function readEventStream(url, signal, onEvent) {
-    const response = await fetch(url, { headers: apiHeaders({ Accept: "text/event-stream" }), signal });
+  const response = await apiFetch(url, { headers: apiHeaders({ Accept: "text/event-stream" }), signal });
   if (!response.ok) {
     const body = await response.text();
     throw new Error("API " + response.status + ": " + body);
@@ -122,19 +147,18 @@ async function submitDeploy(event) {
   $("form-error").hidden = true;
   try {
     const payload = collectPayload();
-    apiHeaders();
-    submitButton.disabled = true;
-    submitButton.querySelector("span:first-child").textContent = "Queueing deployment…";
+    deployButton.disabled = true;
+    deployButton.firstElementChild.textContent = "Đang đưa vào hàng đợi…";
     jobLog.textContent = "";
-    setStatus("PENDING", "Submitting deployment request");
+    setStatus("PENDING", "Đang gửi yêu cầu triển khai");
     if (jobController) jobController.abort();
-    const response = await fetch("/api/v1/apps/deploy", {
+    const response = await apiFetch("/api/v1/apps/deploy", {
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(payload)
     });
     const result = await response.json();
-    if (!response.ok || !result.success) throw new Error(result.error || "API " + response.status);
+    if (!response.ok || !result.success) throw new Error(result.error || "Không thể gửi yêu cầu triển khai.");
     activeJobId = result.data.id;
     sessionStorage.setItem("deploy-last-job", activeJobId);
     $("job-id").textContent = "JOB " + activeJobId;
@@ -147,39 +171,39 @@ async function submitDeploy(event) {
       try {
         const eventData = JSON.parse(data);
         if (eventData.text) appendLog(jobLog, eventData.text);
-        if (eventData.status) setStatus(eventData.status, eventData.text || "");
       } catch {
         appendLog(jobLog, data);
       }
     });
-    const statusResponse = await fetch("/api/v1/jobs/" + encodeURIComponent(activeJobId), { headers: apiHeaders() });
+    const statusResponse = await apiFetch("/api/v1/jobs/" + encodeURIComponent(activeJobId));
     const finalState = await statusResponse.json();
     if (finalState.success) setStatus(finalState.data.status, finalState.data.message);
   } catch (error) {
     if (error.name !== "AbortError") {
       $("form-error").textContent = error.message;
       $("form-error").hidden = false;
-      setStatus("FAILED", "Request failed");
       appendLog(jobLog, error.message);
     }
   } finally {
     if (activeStream === "job") activeStream = "";
-    submitButton.disabled = false;
-    submitButton.querySelector("span:first-child").textContent = "Deploy application";
+    deployButton.disabled = false;
+    deployButton.firstElementChild.textContent = "Bắt đầu triển khai";
     $("stop-stream").hidden = true;
   }
 }
 
 async function openContainerLogs() {
-  $("form-error").hidden = true;
+  const app = $("logs-app-name").value.trim();
+  if (!/^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$/.test(app)) {
+    appendLog(containerLog, "Tên ứng dụng không hợp lệ.");
+    return;
+  }
+  if (appLogController) appLogController.abort();
+  containerLog.textContent = "";
+  appLogController = new AbortController();
+  activeStream = "logs";
+  $("stop-stream").hidden = false;
   try {
-    apiHeaders();
-    const app = $("logs-app-name").value.trim();
-    if (appLogController) appLogController.abort();
-    containerLog.textContent = "";
-    appLogController = new AbortController();
-    activeStream = "logs";
-    $("stop-stream").hidden = false;
     await readEventStream("/api/v1/apps/" + encodeURIComponent(app) + "/logs", appLogController.signal, (data) => appendLog(containerLog, data));
   } catch (error) {
     if (error.name !== "AbortError") appendLog(containerLog, error.message);
@@ -189,27 +213,64 @@ async function openContainerLogs() {
   }
 }
 
+function restorePreviousJob() {
+  const previousJob = sessionStorage.getItem("deploy-last-job");
+  if (!previousJob) return;
+  activeJobId = previousJob;
+  $("job-id").textContent = "JOB " + previousJob;
+  $("copy-job-id").disabled = false;
+  apiFetch("/api/v1/jobs/" + encodeURIComponent(previousJob))
+    .then((response) => response.json())
+    .then((result) => { if (result.success) setStatus(result.data.status, result.data.message); })
+    .catch(() => {});
+}
+
+$("network-type").addEventListener("change", (event) => {
+  $("network-interface").value = event.target.value === "tailscale" ? "tailscale0" : "wg0";
+});
+$("project-preset").addEventListener("change", (event) => {
+  $("dockerfile").value = dockerfilePresets[event.target.value] || "";
+});
 $("deploy-form").addEventListener("submit", submitDeploy);
-$("project-preset").addEventListener("change", applyProjectPreset);
 $("open-logs").addEventListener("click", openContainerLogs);
+$("login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  $("login-error").hidden = true;
+  loginButton.disabled = true;
+  loginButton.firstChild.textContent = "Đang đăng nhập… ";
+  try {
+    const response = await fetch("/api/v1/auth/login", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("login-username").value.trim(), password: $("login-password").value })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || "Đăng nhập không thành công.");
+    $("login-password").value = "";
+    showConsole(result.data.username);
+  } catch (error) {
+    $("login-error").textContent = error.message === "Failed to fetch" ? "Không kết nối được agent." : error.message;
+    $("login-error").hidden = false;
+  } finally {
+    loginButton.disabled = false;
+    loginButton.firstChild.textContent = "Vào bảng điều khiển ";
+  }
+});
+$("logout-button").addEventListener("click", async () => {
+  try {
+    await fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" });
+  } finally {
+    $("login-password").value = "";
+    showLogin();
+  }
+});
 $("stop-stream").addEventListener("click", () => {
   if (activeStream === "job" && jobController) jobController.abort();
   if (activeStream === "logs" && appLogController) appLogController.abort();
 });
 $("copy-job-id").addEventListener("click", async () => {
-  if (!activeJobId) return;
-  await navigator.clipboard.writeText(activeJobId);
+  if (activeJobId) await navigator.clipboard.writeText(activeJobId);
 });
 
-const previousJob = sessionStorage.getItem("deploy-last-job");
-if (previousJob) {
-  activeJobId = previousJob;
-  $("job-id").textContent = "JOB " + previousJob;
-  $("copy-job-id").disabled = false;
-  if (tokenField.value) {
-    fetch("/api/v1/jobs/" + encodeURIComponent(previousJob), { headers: apiHeaders() })
-      .then((response) => response.json())
-      .then((result) => { if (result.success) setStatus(result.data.status, result.data.message); })
-      .catch(() => {});
-  }
-}
+restoreSession();

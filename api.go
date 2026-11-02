@@ -11,12 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type API struct {
 	Jobs     *jobStore
 	Deployer *Deployer
 	Queue    chan deployTask
+	Sessions *sessionManager
 }
 
 type deployTask struct {
@@ -44,6 +46,9 @@ func (a *API) runWorkers(count int) {
 
 func (a *API) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/auth/login", a.login)
+	mux.HandleFunc("/api/v1/auth/me", a.sessionStatus)
+	mux.HandleFunc("/api/v1/auth/logout", a.logout)
 	mux.HandleFunc("/api/v1/apps/deploy", a.deploy)
 	mux.HandleFunc("/api/v1/jobs/", a.jobRoute)
 	mux.HandleFunc("/api/v1/apps/", a.logsRoute)
@@ -58,6 +63,24 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if r.URL.Path == "/api/v1/auth/login" || r.URL.Path == "/api/v1/auth/me" || r.URL.Path == "/api/v1/auth/logout" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if a.Sessions != nil {
+			cookie, err := r.Cookie(sessionCookieName)
+			if err == nil && a.Sessions.valid(cookie.Value) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+			if token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(token)) == 1 {
+				next.ServeHTTP(w, r)
+				return
+			}
+			writeJSON(w, http.StatusUnauthorized, APIResponse{Success: false, Data: nil, Error: "unauthorized"})
+			return
+		}
 		if token != "" {
 			got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 			if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
@@ -67,6 +90,77 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (a *API) login(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{Success: false, Data: nil, Error: "method not allowed"})
+		return
+	}
+	if a.Sessions == nil {
+		writeJSON(w, http.StatusConflict, APIResponse{Success: false, Data: nil, Error: "login is not configured"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var credentials loginRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&credentials); err != nil || credentials.Username == "" || credentials.Password == "" {
+		writeJSON(w, http.StatusBadRequest, APIResponse{Success: false, Data: nil, Error: "enter username and password"})
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		writeJSON(w, http.StatusBadRequest, APIResponse{Success: false, Data: nil, Error: "request must contain one JSON object"})
+		return
+	}
+	if !a.Sessions.matches(credentials.Username, credentials.Password) {
+		writeJSON(w, http.StatusUnauthorized, APIResponse{Success: false, Data: nil, Error: "username or password is incorrect"})
+		return
+	}
+	id, expires, err := a.Sessions.create(credentials.Username)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, APIResponse{Success: false, Data: nil, Error: "could not create session"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name: sessionCookieName, Value: id, Path: "/", Expires: expires,
+		MaxAge: int(time.Until(expires).Seconds()), HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		SameSite: http.SameSiteStrictMode,
+	})
+	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]string{"username": credentials.Username}, Error: nil})
+}
+
+func (a *API) sessionStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{Success: false, Data: nil, Error: "method not allowed"})
+		return
+	}
+	if a.Sessions == nil {
+		writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]any{"authenticated": true}, Error: nil})
+		return
+	}
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]any{"authenticated": false}, Error: nil})
+		return
+	}
+	username, ok := a.Sessions.username(cookie.Value)
+	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]any{"authenticated": ok, "username": username}, Error: nil})
+}
+
+func (a *API) logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, APIResponse{Success: false, Data: nil, Error: "method not allowed"})
+		return
+	}
+	if cookie, err := r.Cookie(sessionCookieName); err == nil && a.Sessions != nil {
+		a.Sessions.remove(cookie.Value)
+	}
+	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"})
+	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: nil, Error: nil})
 }
 
 func (a *API) deploy(w http.ResponseWriter, r *http.Request) {

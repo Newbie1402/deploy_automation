@@ -3,32 +3,66 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="color-scheme" content="dark">
-    <title>Deploy Console</title>
+    <meta name="color-scheme" content="light">
+    <meta name="description" content="Bảng điều khiển triển khai ứng dụng riêng trên VPS.">
+    <title>Deploy Console · Bảng điều khiển</title>
     <link rel="stylesheet" href="/app.css">
     <script src="/app.js" defer></script>
   </head>
   <body>
+    <a class="skip-link" href="#main-content">Đi tới nội dung</a>
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Deploy Console">
-        <span class="brand-mark">D</span>
-        <span>deploy<span class="brand-light">/console</span></span>
+      <a class="brand" href="/" aria-label="Deploy Console, trang chủ">
+        <span class="brand-mark">d.</span>
+        <span>deploy console</span>
       </a>
-      <div class="topbar-right">
-        <span class="secure-pill"><span class="pulse"></span> VPN only</span>
-        <span class="build-label">AGENT <b>READY</b></span>
+      <div class="session-bar" id="session-bar" hidden>
+        <span class="connection-state"><i></i> Kết nối riêng tư</span>
+        <span class="account-name" id="account-name"></span>
+        <button class="logout-button" id="logout-button" type="button">Đăng xuất</button>
       </div>
     </header>
 
-    <main class="shell">
+    <main id="login-view" class="login-layout" hidden>
+      <section class="login-intro">
+        <p class="overline">BẢNG ĐIỀU KHIỂN VPS</p>
+        <h1>Đưa bản phát hành<br>lên đúng nơi.</h1>
+        <p class="intro-copy">Đồng bộ mã nguồn, tạo image và quản lý ứng dụng trong một luồng triển khai.</p>
+        <div class="login-note">
+          <span class="note-mark">01</span>
+          <p>Phiên đăng nhập riêng tư<br><strong>Chỉ mở qua mạng VPN</strong></p>
+        </div>
+        <div class="decorative-grid" aria-hidden="true"></div>
+      </section>
+      <section class="login-panel">
+        <p class="overline">CHÀO MỪNG TRỞ LẠI</p>
+        <h2>Đăng nhập</h2>
+        <p class="login-copy">Nhập thông tin quản trị để tiếp tục.</p>
+        <form id="login-form">
+          <label class="field">
+            <span>Tên đăng nhập</span>
+            <input id="login-username" name="username" autocomplete="username" required value="newbie1402">
+          </label>
+          <label class="field">
+            <span>Mật khẩu</span>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <div class="form-error" id="login-error" role="alert" hidden></div>
+          <button class="primary-button" id="login-button" type="submit">Vào bảng điều khiển <span aria-hidden="true">→</span></button>
+        </form>
+        <p class="login-footnote"><span class="tiny-lock" aria-hidden="true">⌑</span> Kết nối được giới hạn trong mạng Tailscale.</p>
+      </section>
+    </main>
+
+    <main id="console-view" class="shell" hidden>
       <section class="intro">
         <div>
-          <p class="eyebrow">DEPLOYMENT CONTROL PLANE</p>
-          <h1>Ship a repository.</h1>
-          <p class="intro-copy">Đồng bộ GitHub, build image và cập nhật container trên VPS.</p>
+          <p class="overline">QUẢN LÝ ỨNG DỤNG</p>
+          <h1>Triển khai bản mới</h1>
+          <p class="intro-copy">Kết nối GitHub, cấu hình container và theo dõi tiến trình ngay tại đây.</p>
         </div>
-        <div class="step-track" aria-label="Deployment stages">
-          <span><i>01</i> SOURCE</span><b></b><span><i>02</i> BUILD</span><b></b><span><i>03</i> RELEASE</span>
+        <div class="step-track" aria-label="Các bước triển khai">
+          <span><i>01</i> MÃ NGUỒN</span><b></b><span><i>02</i> ĐÓNG GÓI</span><b></b><span><i>03</i> PHÁT HÀNH</span>
         </div>
       </section>
 
@@ -36,48 +70,47 @@
         <section class="panel deploy-panel">
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">NEW RELEASE</p>
-              <h2>Deployment config</h2>
+              <p class="overline">BẢN PHÁT HÀNH MỚI</p>
+              <h2>Cấu hình triển khai</h2>
             </div>
-            <span class="panel-icon">↗</span>
+            <span class="panel-icon" aria-hidden="true">↗</span>
           </div>
-
           <form id="deploy-form">
             <fieldset>
-              <legend><span>01</span> Source repository</legend>
+              <legend><span>01</span> Mã nguồn</legend>
               <label class="field">
-                <span>Repository URL</span>
-                <input id="repository" type="url" required placeholder="https://github.com/org/project.git" value="https://github.com/Newbie1402/Portfolio.git">
+                <span>Địa chỉ repository</span>
+                <input id="repository" type="url" required placeholder="https://github.com/to-chuc/du-an.git" value="https://github.com/Newbie1402/Portfolio.git">
               </label>
               <div class="grid two">
                 <label class="field">
-                  <span>Branch</span>
+                  <span>Nhánh</span>
                   <input id="branch" required value="main">
                 </label>
                 <label class="field">
-                  <span>Workspace folder</span>
+                  <span>Tên ứng dụng</span>
                   <input id="app-name" required value="portfolio" pattern="[A-Za-z0-9]+([._-][A-Za-z0-9]+)*">
                 </label>
               </div>
               <label class="field">
-                <span>GitHub PAT <small>optional for public repositories</small></span>
-                <input id="git-token" type="password" autocomplete="new-password" placeholder="ghp_••••••••••••">
+                <span>GitHub PAT <small>chỉ cần với repository riêng tư</small></span>
+                <input id="git-token" type="password" autocomplete="new-password" placeholder="Để trống nếu repository công khai">
               </label>
             </fieldset>
 
             <fieldset>
-              <legend><span>02</span> Container</legend>
+              <legend><span>02</span> Container và mạng</legend>
               <div class="grid three">
                 <label class="field">
-                  <span>Container port</span>
+                  <span>Cổng trong container</span>
                   <input id="container-port" type="number" min="1" max="65535" value="80" required>
                 </label>
                 <label class="field">
-                  <span>Host port</span>
+                  <span>Cổng trên VPS</span>
                   <input id="host-port" type="number" min="1" max="65535" value="18080" required>
                 </label>
                 <label class="field">
-                  <span>VPN network</span>
+                  <span>Mạng riêng</span>
                   <select id="network-type">
                     <option value="tailscale">Tailscale</option>
                     <option value="wireguard">WireGuard</option>
@@ -86,112 +119,97 @@
               </div>
               <div class="grid two">
                 <label class="field">
-                  <span>Interface</span>
+                  <span>Tên giao diện mạng</span>
                   <input id="network-interface" value="tailscale0">
                 </label>
                 <label class="field">
-                  <span>Health check path <small>optional</small></span>
+                  <span>Đường dẫn kiểm tra <small>không bắt buộc</small></span>
                   <input id="healthcheck-path" value="/" placeholder="/health">
                 </label>
               </div>
               <div class="grid two">
                 <label class="field">
-                  <span>Memory limit</span>
+                  <span>Bộ nhớ tối đa</span>
                   <input id="memory-limit" value="512m" placeholder="512m">
                 </label>
                 <label class="field">
-                  <span>CPU limit</span>
+                  <span>CPU tối đa</span>
                   <input id="cpu-limit" type="number" min="0.1" step="0.1" value="1">
                 </label>
               </div>
             </fieldset>
 
             <details class="advanced">
-              <summary>Advanced: environment & Dockerfile</summary>
+              <summary>Môi trường và Dockerfile</summary>
               <label class="field">
-                <span>Project preset</span>
+                <span>Loại dự án</span>
                 <select id="project-preset">
-                  <option value="repo">Use Dockerfile from repository</option>
-                  <option value="static">Static site (HTML/CSS/JS · Nginx)</option>
+                  <option value="repo">Dùng Dockerfile có sẵn trong repository</option>
+                  <option value="static">Web tĩnh (HTML/CSS/JS · Nginx)</option>
                   <option value="vite">Node.js · Vite/React</option>
-                  <option value="node">Node.js · server</option>
+                  <option value="node">Node.js · máy chủ ứng dụng</option>
                   <option value="python">Python · Flask/Gunicorn</option>
-                  <option value="go">Go · single binary</option>
+                  <option value="go">Go · ứng dụng một binary</option>
                 </select>
               </label>
               <label class="field">
-                <span>Environment <small>one KEY=VALUE per line</small></span>
+                <span>Biến môi trường <small>mỗi dòng một KEY=VALUE</small></span>
                 <textarea id="environment" rows="4" spellcheck="false" placeholder="APP_ENV=production&#10;PUBLIC_URL=https://example.com"></textarea>
               </label>
               <label class="field">
-                <span>Generated Dockerfile <small>preset selection fills this in; you can edit it</small></span>
-                <textarea id="dockerfile" rows="8" spellcheck="false" placeholder="Choose a project preset to generate a Dockerfile override"></textarea>
+                <span>Dockerfile được tạo <small>có thể chỉnh sửa trước khi triển khai</small></span>
+                <textarea id="dockerfile" rows="8" spellcheck="false" placeholder="Chọn loại dự án để tạo Dockerfile mẫu"></textarea>
               </label>
             </details>
 
             <div class="form-error" id="form-error" role="alert" hidden></div>
-            <button class="primary-button" id="deploy-button" type="submit">
-              <span>Deploy application</span><span class="button-arrow">→</span>
+            <button class="primary-button deploy-button" id="deploy-button" type="submit">
+              <span>Bắt đầu triển khai</span><span aria-hidden="true">→</span>
             </button>
-            <p class="form-footnote">Port được publish trên IP của interface VPN đã chọn.</p>
+            <p class="form-footnote">Cổng ứng dụng chỉ được mở trên địa chỉ IP của mạng riêng.</p>
           </form>
         </section>
 
         <aside class="right-column">
-          <section class="panel auth-panel">
-            <div class="panel-heading compact">
-              <div>
-                <p class="eyebrow">CONTROL ACCESS</p>
-                <h2>Agent API token</h2>
-              </div>
-              <span class="lock-icon">⌑</span>
-            </div>
-            <label class="field">
-              <span>Bearer token</span>
-              <input id="api-token" type="password" autocomplete="current-password" placeholder="Paste the token from the agent env file">
-            </label>
-            <p class="hint">Token chỉ được giữ trong session của tab này và gửi qua HTTPS/VPN tới agent.</p>
-          </section>
-
           <section class="panel activity-panel">
             <div class="panel-heading compact">
               <div>
-                <p class="eyebrow">LIVE ACTIVITY</p>
-                <h2>Release stream</h2>
+                <p class="overline">TIẾN TRÌNH TRỰC TIẾP</p>
+                <h2>Bản phát hành</h2>
               </div>
-              <span class="status-chip idle" id="job-status">IDLE</span>
+              <span class="status-chip idle" id="job-status">CHƯA CHẠY</span>
             </div>
             <div class="job-meta" id="job-meta">
-              <span>No deployment selected</span>
+              <span>Chưa có lần triển khai nào</span>
               <span id="job-id"></span>
             </div>
-            <pre class="log-window" id="job-log" aria-live="polite"><span class="log-placeholder">Build and deployment output will appear here.</span></pre>
+            <pre class="log-window" id="job-log" aria-live="polite"><span class="log-placeholder">Log build và triển khai sẽ hiển thị ở đây.</span></pre>
             <div class="log-actions">
-              <button class="text-button" id="copy-job-id" type="button" disabled>Copy job ID</button>
-              <button class="text-button" id="stop-stream" type="button" hidden>Stop stream</button>
+              <button class="text-button" id="copy-job-id" type="button" disabled>Sao chép mã job</button>
+              <button class="text-button" id="stop-stream" type="button" hidden>Dừng theo dõi</button>
             </div>
           </section>
-
           <section class="panel app-logs-panel">
             <div class="panel-heading compact">
               <div>
-                <p class="eyebrow">RUNNING CONTAINER</p>
-                <h2>Container logs</h2>
+                <p class="overline">CONTAINER ĐANG CHẠY</p>
+                <h2>Nhật ký ứng dụng</h2>
               </div>
-              <span class="live-label"><i></i> LIVE</span>
+              <span class="live-label"><i></i> TRỰC TIẾP</span>
             </div>
             <div class="grid logs-control">
               <label class="field">
-                <span>App name</span>
+                <span>Tên ứng dụng</span>
                 <input id="logs-app-name" value="portfolio">
               </label>
-              <button class="secondary-button" id="open-logs" type="button">Stream</button>
+              <button class="secondary-button" id="open-logs" type="button">Xem log</button>
             </div>
-            <pre class="log-window short" id="container-log"><span class="log-placeholder">Connect to stream container stdout/stderr.</span></pre>
+            <pre class="log-window short" id="container-log"><span class="log-placeholder">Kết nối để xem stdout và stderr của container.</span></pre>
           </section>
+          <p class="aside-note">Mỗi ứng dụng được triển khai tuần tự. Image cũ được giữ lại để hỗ trợ rollback.</p>
         </aside>
       </div>
-      <footer>Deploy Console <span>·</span> Requests are serialized per app <span>·</span> Images remain available for rollback</footer>
+      <footer>Deploy Console <span>·</span> Bảng điều khiển riêng trên VPS</footer>
     </main>
   </body>
 </html>
