@@ -109,12 +109,23 @@
             <details class="advanced">
               <summary>Advanced: environment & Dockerfile</summary>
               <label class="field">
+                <span>Project preset</span>
+                <select id="project-preset">
+                  <option value="repo">Use Dockerfile from repository</option>
+                  <option value="static">Static site (HTML/CSS/JS · Nginx)</option>
+                  <option value="vite">Node.js · Vite/React</option>
+                  <option value="node">Node.js · server</option>
+                  <option value="python">Python · Flask/Gunicorn</option>
+                  <option value="go">Go · single binary</option>
+                </select>
+              </label>
+              <label class="field">
                 <span>Environment <small>one KEY=VALUE per line</small></span>
                 <textarea id="environment" rows="4" spellcheck="false" placeholder="APP_ENV=production&#10;PUBLIC_URL=https://example.com"></textarea>
               </label>
               <label class="field">
-                <span>Dockerfile override <small>used when the repo has no Dockerfile</small></span>
-                <textarea id="dockerfile" rows="8" spellcheck="false" placeholder="FROM node:22-alpine AS build&#10;WORKDIR /app&#10;COPY package*.json ./&#10;RUN npm ci&#10;COPY . .&#10;RUN npm run build&#10;&#10;FROM nginx:alpine&#10;COPY --from=build /app/dist /usr/share/nginx/html"></textarea>
+                <span>Generated Dockerfile <small>preset selection fills this in; you can edit it</small></span>
+                <textarea id="dockerfile" rows="8" spellcheck="false" placeholder="Choose a project preset to generate a Dockerfile override"></textarea>
               </label>
             </details>
 
