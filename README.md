@@ -27,6 +27,16 @@ Go main package); review or adjust the generated Dockerfile before deploying.
 
 The API listens on `127.0.0.1:8080` by default. Set `WORKSPACE_ROOT` for checked-out repositories, `DATA_DIR` for the audit log, and `API_ADDR` to listen on a VPN address. For the console login, set `DEPLOY_USERNAME` and `DEPLOY_PASSWORD`; both must be configured together. The console creates an in-memory session that expires after 12 hours or when the agent restarts. The API also supports a bearer token through `DEPLOY_API_TOKEN` for non-browser clients.
 
+To enable GitHub account linking, set `GITHUB_APP_CLIENT_ID` to a GitHub App
+client ID and enable Device Flow for that app. Grant repository Metadata
+read-only and Contents read-only, then install the app only on repositories the
+agent should deploy. The agent keeps the resulting user token in the logged-in
+session memory, refreshes it when possible, and never sends it to the browser.
+When linked, the app can list accessible repositories and branches; a manually
+entered GitHub PAT continues to override the linked account for one deployment.
+Disconnecting clears the token from the agent session; revoke the GitHub App
+authorization separately in GitHub settings if you want to remove its access.
+
 `DEPLOY_PASSWORD` should be a long random value and the environment file should
 be readable only by the agent account. Session cookies are HttpOnly and
 SameSite=Strict; use a trusted VPN or HTTPS connection to access the console.
@@ -37,6 +47,7 @@ DATA_DIR=/var/lib/deploy-agent \
 API_ADDR=100.80.1.2:8080 \
 DEPLOY_USERNAME='admin' \
 DEPLOY_PASSWORD='replace-with-a-long-random-password' \
+GITHUB_APP_CLIENT_ID='' \
 go run .
 ```
 

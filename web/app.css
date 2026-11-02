@@ -101,6 +101,17 @@ legend span { color: var(--accent); font: 10px var(--mono); margin-right: 8px; }
 .grid { display: grid; gap: 12px; }
 .grid.two { grid-template-columns: repeat(2,minmax(0,1fr)); margin-top: 12px; }
 .grid.three { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.github-connect { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: center; margin-top: 12px; padding: 13px; border: 1px solid #d9ded5; border-radius: 5px; background: #f8f8f3; }
+.github-connect-copy strong { display: block; color: var(--ink); font-size: 11px; font-weight: 650; }
+.github-connect-copy p { margin: 3px 0 0; color: var(--muted); font-size: 10px; }
+.github-connect-button { grid-column: 2; grid-row: 1; white-space: nowrap; }
+.github-device { grid-column: 1 / -1; padding-top: 11px; border-top: 1px solid var(--line); }
+.github-device p { margin: 0 0 5px; color: var(--muted); font-size: 10px; }
+.github-device a { color: var(--accent); font-size: 11px; font-weight: 650; text-underline-offset: 3px; }
+.device-code-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.device-code-row strong { color: var(--ink); font: 700 20px var(--mono); letter-spacing: .13em; }
+.github-repository-field,.github-branch-field { grid-column: 1 / -1; }
+.github-connect .text-button { color: var(--accent); }
 .advanced { padding: 14px 0 17px; border-top: 1px solid var(--surface-soft); border-bottom: 1px solid var(--surface-soft); }
 .advanced summary { color: var(--ink); font-size: 12px; font-weight: 650; cursor: pointer; list-style: none; }
 .advanced summary::-webkit-details-marker { display: none; }

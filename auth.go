@@ -19,6 +19,15 @@ type loginRequest struct {
 type authSession struct {
 	username string
 	expires  time.Time
+	github   githubAuth
+}
+
+type githubAuth struct {
+	AccessToken      string
+	RefreshToken     string
+	ExpiresAt        time.Time
+	RefreshExpiresAt time.Time
+	Username         string
 }
 
 type sessionManager struct {
@@ -77,5 +86,35 @@ func (s *sessionManager) valid(id string) bool {
 func (s *sessionManager) remove(id string) {
 	s.mu.Lock()
 	delete(s.sessions, id)
+	s.mu.Unlock()
+}
+
+func (s *sessionManager) githubAuth(id string) (githubAuth, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessions[id]
+	if !ok || time.Now().After(session.expires) || session.github.AccessToken == "" {
+		return githubAuth{}, false
+	}
+	return session.github, true
+}
+
+func (s *sessionManager) setGitHub(id string, auth githubAuth) {
+	s.mu.Lock()
+	session, ok := s.sessions[id]
+	if ok && time.Now().Before(session.expires) {
+		session.github = auth
+		s.sessions[id] = session
+	}
+	s.mu.Unlock()
+}
+
+func (s *sessionManager) clearGitHub(id string) {
+	s.mu.Lock()
+	session, ok := s.sessions[id]
+	if ok {
+		session.github = githubAuth{}
+		s.sessions[id] = session
+	}
 	s.mu.Unlock()
 }

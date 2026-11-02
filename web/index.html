@@ -82,6 +82,30 @@
                 <span>Địa chỉ repository</span>
                 <input id="repository" type="url" required placeholder="https://github.com/to-chuc/du-an.git" value="https://github.com/Newbie1402/Portfolio.git">
               </label>
+              <section class="github-connect" id="github-connect-panel" hidden aria-label="Kết nối GitHub">
+                <div class="github-connect-copy">
+                  <strong id="github-connect-title">Chọn repository từ GitHub</strong>
+                  <p id="github-connect-message">Kết nối GitHub để duyệt repository và nhánh.</p>
+                </div>
+                <button class="secondary-button github-connect-button" id="github-connect-button" type="button">Kết nối GitHub</button>
+                <div class="github-device" id="github-device" hidden>
+                  <p>Mở GitHub và nhập mã xác nhận này:</p>
+                  <a id="github-verify-link" href="https://github.com/login/device" target="_blank" rel="noopener noreferrer">Mở trang xác nhận GitHub ↗</a>
+                  <div class="device-code-row"><strong id="github-user-code"></strong><button class="text-button" id="copy-github-code" type="button">Sao chép mã</button></div>
+                </div>
+                <label class="field github-repository-field" id="github-repository-field" hidden>
+                  <span>Repository được cấp quyền</span>
+                  <select id="github-repository">
+                    <option value="">Chọn repository</option>
+                  </select>
+                </label>
+                <label class="field github-branch-field" id="github-branch-field" hidden>
+                  <span>Nhánh có sẵn</span>
+                  <select id="github-branches">
+                    <option value="">Chọn nhánh để điền</option>
+                  </select>
+                </label>
+              </section>
               <div class="grid two">
                 <label class="field">
                   <span>Nhánh</span>
@@ -93,8 +117,8 @@
                 </label>
               </div>
               <label class="field">
-                <span>GitHub PAT <small>chỉ cần với repository riêng tư</small></span>
-                <input id="git-token" type="password" autocomplete="new-password" placeholder="Để trống nếu repository công khai">
+                <span>GitHub PAT thủ công <small>chỉ cần nếu chưa kết nối GitHub</small></span>
+                <input id="git-token" type="password" autocomplete="new-password" placeholder="Để trống nếu repo công khai hoặc đã kết nối">
               </label>
             </fieldset>
 

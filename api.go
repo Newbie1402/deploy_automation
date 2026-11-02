@@ -19,6 +19,7 @@ type API struct {
 	Deployer *Deployer
 	Queue    chan deployTask
 	Sessions *sessionManager
+	GitHub   *githubClient
 }
 
 type deployTask struct {
@@ -49,6 +50,12 @@ func (a *API) routes() http.Handler {
 	mux.HandleFunc("/api/v1/auth/login", a.login)
 	mux.HandleFunc("/api/v1/auth/me", a.sessionStatus)
 	mux.HandleFunc("/api/v1/auth/logout", a.logout)
+	mux.HandleFunc("/api/v1/github/config", a.githubConfig)
+	mux.HandleFunc("/api/v1/github/device/start", a.githubDeviceStart)
+	mux.HandleFunc("/api/v1/github/device/poll", a.githubDevicePoll)
+	mux.HandleFunc("/api/v1/github/repos", a.githubRepositories)
+	mux.HandleFunc("/api/v1/github/branches", a.githubBranches)
+	mux.HandleFunc("/api/v1/github/disconnect", a.githubDisconnect)
 	mux.HandleFunc("/api/v1/apps/deploy", a.deploy)
 	mux.HandleFunc("/api/v1/jobs/", a.jobRoute)
 	mux.HandleFunc("/api/v1/apps/", a.logsRoute)
@@ -148,7 +155,15 @@ func (a *API) sessionStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username, ok := a.Sessions.username(cookie.Value)
-	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]any{"authenticated": ok, "username": username}, Error: nil})
+	githubUsername := ""
+	githubConnected := false
+	if ok {
+		auth, connected := a.Sessions.githubAuth(cookie.Value)
+		if connected {
+			githubUsername, githubConnected = auth.Username, true
+		}
+	}
+	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: map[string]any{"authenticated": ok, "username": username, "github_connected": githubConnected, "github_username": githubUsername}, Error: nil})
 }
 
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
@@ -158,6 +173,9 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if cookie, err := r.Cookie(sessionCookieName); err == nil && a.Sessions != nil {
 		a.Sessions.remove(cookie.Value)
+		if a.GitHub != nil {
+			a.GitHub.removePending(cookie.Value)
+		}
 	}
 	http.SetCookie(w, &http.Cookie{Name: sessionCookieName, Value: "", Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"})
 	writeJSON(w, http.StatusOK, APIResponse{Success: true, Data: nil, Error: nil})
@@ -184,6 +202,16 @@ func (a *API) deploy(w http.ResponseWriter, r *http.Request) {
 	if req.Manifest.AppName == "" || req.Git.Repository == "" || req.Git.Branch == "" {
 		writeJSON(w, http.StatusBadRequest, APIResponse{Success: false, Data: nil, Error: "manifest.app_name, git.repository and git.branch are required"})
 		return
+	}
+	if req.Git.Token == "" {
+		token, connected, err := a.githubAccessToken(r.Context(), r)
+		if err != nil {
+			writeJSON(w, http.StatusConflict, APIResponse{Success: false, Data: nil, Error: err.Error()})
+			return
+		}
+		if connected {
+			req.Git.Token = token
+		}
 	}
 	j := a.Jobs.create(req.Manifest.AppName, r.RemoteAddr)
 	select {
