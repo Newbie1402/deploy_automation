@@ -21,6 +21,11 @@ VPN interface. The console submits deployments and streams job/container logs.
 The token is kept in the current browser tab's session storage; use HTTPS or a
 trusted VPN connection when accessing the console.
 
+For repositories without a Dockerfile, choose an editable project preset in the
+console. Presets are starter Dockerfiles and assume conventional project files
+and start commands (for example, npm start, Flask app:app with Gunicorn, or a
+Go main package); review or adjust the generated Dockerfile before deploying.
+
 The API listens on `127.0.0.1:8080` by default. Set `WORKSPACE_ROOT` for checked-out repositories, `DATA_DIR` for the audit log, and `API_ADDR` to listen on a VPN address. Any non-loopback `API_ADDR` requires `DEPLOY_API_TOKEN`; clients then send `Authorization: Bearer <token>`.
 
 ```sh

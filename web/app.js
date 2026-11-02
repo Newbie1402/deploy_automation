@@ -53,6 +53,18 @@ function parseEnvironment(value) {
   return output;
 }
 
+const dockerfilePresets = {
+  static: "# syntax=docker/dockerfile:1\nFROM nginx:alpine\nCOPY --exclude=.git* --exclude=.github --exclude=.env* --exclude=Dockerfile . /usr/share/nginx/html/",
+  vite: "FROM node:22-alpine AS build\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci\nCOPY . .\nRUN npm run build\n\nFROM nginx:alpine\nCOPY --from=build /app/dist /usr/share/nginx/html",
+  node: "FROM node:22-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --omit=dev\nCOPY . .\nENV PORT=3000\nEXPOSE 3000\nCMD [\"npm\", \"start\"]",
+  python: "FROM python:3.12-slim\nWORKDIR /app\nCOPY requirements.txt ./\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY . .\nENV PORT=8000\nEXPOSE 8000\nCMD [\"sh\", \"-c\", \"gunicorn --bind 0.0.0.0:$PORT app:app\"]",
+  go: "FROM golang:1.25-alpine AS build\nWORKDIR /src\nCOPY go.mod ./\nRUN go mod download\nCOPY . .\nRUN CGO_ENABLED=0 go build -o /server .\n\nFROM alpine:3.22\nCOPY --from=build /server /server\nENV PORT=8080\nEXPOSE 8080\nENTRYPOINT [\"/server\"]"
+};
+
+function applyProjectPreset() {
+  $("dockerfile").value = dockerfilePresets[$("project-preset").value] || "";
+}
+
 function collectPayload() {
   const appName = $("app-name").value.trim();
   $("logs-app-name").value = appName;
@@ -178,6 +190,7 @@ async function openContainerLogs() {
 }
 
 $("deploy-form").addEventListener("submit", submitDeploy);
+$("project-preset").addEventListener("change", applyProjectPreset);
 $("open-logs").addEventListener("click", openContainerLogs);
 $("stop-stream").addEventListener("click", () => {
   if (activeStream === "job" && jobController) jobController.abort();
