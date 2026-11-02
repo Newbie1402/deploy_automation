@@ -15,24 +15,28 @@ A small Go HTTP agent that syncs a GitHub repository, builds its Docker image, a
 go run .
 ```
 
-Open the agent address in a browser to use the embedded Deploy Console. Enter the
-agent API token in the page, then provide a GitHub repository, branch, ports, and
-VPN interface. The console submits deployments and streams job/container logs.
-The token is kept in the current browser tab's session storage; use HTTPS or a
-trusted VPN connection when accessing the console.
+Open the agent address in a browser to use the embedded Deploy Console. Sign in
+with the configured username and password, then provide a GitHub repository,
+branch, ports, and VPN interface. The console submits deployments and streams
+job/container logs.
 
 For repositories without a Dockerfile, choose an editable project preset in the
 console. Presets are starter Dockerfiles and assume conventional project files
 and start commands (for example, npm start, Flask app:app with Gunicorn, or a
 Go main package); review or adjust the generated Dockerfile before deploying.
 
-The API listens on `127.0.0.1:8080` by default. Set `WORKSPACE_ROOT` for checked-out repositories, `DATA_DIR` for the audit log, and `API_ADDR` to listen on a VPN address. Any non-loopback `API_ADDR` requires `DEPLOY_API_TOKEN`; clients then send `Authorization: Bearer <token>`.
+The API listens on `127.0.0.1:8080` by default. Set `WORKSPACE_ROOT` for checked-out repositories, `DATA_DIR` for the audit log, and `API_ADDR` to listen on a VPN address. For the console login, set `DEPLOY_USERNAME` and `DEPLOY_PASSWORD`; both must be configured together. The console creates an in-memory session that expires after 12 hours or when the agent restarts. The API also supports a bearer token through `DEPLOY_API_TOKEN` for non-browser clients.
+
+`DEPLOY_PASSWORD` should be a long random value and the environment file should
+be readable only by the agent account. Session cookies are HttpOnly and
+SameSite=Strict; use a trusted VPN or HTTPS connection to access the console.
 
 ```sh
 WORKSPACE_ROOT=/srv/deploy/workspaces \
 DATA_DIR=/var/lib/deploy-agent \
 API_ADDR=100.80.1.2:8080 \
-DEPLOY_API_TOKEN='replace-with-a-long-random-token' \
+DEPLOY_USERNAME='admin' \
+DEPLOY_PASSWORD='replace-with-a-long-random-password' \
 go run .
 ```
 
