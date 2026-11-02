@@ -11,6 +11,7 @@ let githubPollTimer;
 let githubPollInterval = 5;
 let githubRepositories = new Map();
 let githubConnected = false;
+let githubSuggestedAppName = "";
 
 function apiHeaders(extra = {}) {
   return Object.assign({}, extra);
@@ -140,7 +141,7 @@ async function loadGitHubRepositories() {
   }
 }
 
-async function loadGitHubBranches(repository) {
+async function loadGitHubBranches(repository, defaultBranch) {
   const branchField = $("github-branch-field");
   branchField.hidden = true;
   const response = await apiFetch("/api/v1/github/branches?repository=" + encodeURIComponent(repository));
@@ -149,6 +150,13 @@ async function loadGitHubBranches(repository) {
   const select = $("github-branches");
   select.replaceChildren(new Option("Chọn nhánh để điền", ""));
   for (const branch of result.data) select.add(new Option(branch, branch));
+  if (result.data.includes(defaultBranch)) {
+    select.value = defaultBranch;
+    $("branch").value = defaultBranch;
+  } else if (result.data.length === 1) {
+    select.value = result.data[0];
+    $("branch").value = result.data[0];
+  }
   branchField.hidden = result.data.length === 0;
 }
 
@@ -212,7 +220,7 @@ function collectPayload() {
     },
     git: {
       repository: $("repository").value.trim(),
-      branch: $("branch").value.trim(),
+      branch: $("branch").value.trim() || $("github-branches").value,
       token: $("git-token").value
     },
     network: { type: $("network-type").value, interface: $("network-interface").value.trim() }
@@ -245,6 +253,14 @@ async function readEventStream(url, signal, onEvent) {
 async function submitDeploy(event) {
   event.preventDefault();
   $("form-error").hidden = true;
+  const selectedRepository = githubRepositories.get($("github-repository").value);
+  if (selectedRepository) {
+    $("branch").value = $("branch").value.trim() || $("github-branches").value || selectedRepository.default_branch;
+    if (!$("app-name").value.trim()) {
+      $("app-name").value = selectedRepository.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    }
+  }
+  if (!$("deploy-form").reportValidity()) return;
   try {
     const payload = collectPayload();
     deployButton.disabled = true;
@@ -359,8 +375,14 @@ $("github-repository").addEventListener("change", async (event) => {
   if (!repository) return;
   $("repository").value = repository.clone_url;
   $("branch").value = repository.default_branch;
+  const suggestedAppName = repository.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const appNameField = $("app-name");
+  if (!appNameField.value.trim() || appNameField.value === githubSuggestedAppName) {
+    appNameField.value = suggestedAppName;
+  }
+  githubSuggestedAppName = suggestedAppName;
   try {
-    await loadGitHubBranches(repository.full_name);
+    await loadGitHubBranches(repository.full_name, repository.default_branch);
   } catch (error) {
     $("github-connect-message").textContent = error.message;
   }
